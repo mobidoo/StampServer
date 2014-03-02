@@ -22,7 +22,9 @@ libraryDependencies ++= Seq(
 
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor" % "2.2.3",
-  "org.reactivemongo" %% "reactivemongo" % "0.10.0"
+  "org.reactivemongo" %% "reactivemongo" % "0.10.0",
+  "ch.qos.logback" % "logback-classic" % "1.0.9",
+  "com.typesafe.akka" %% "akka-slf4j" % "2.2.3"
 )
 
 resolvers += "spray repo" at "http://repo.spray.io"

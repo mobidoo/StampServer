@@ -4,6 +4,7 @@ import akka.io.IO
 import spray.can.Http
 import akka.actor.{ActorSystem, Props}
 import com.typesafe.config.ConfigFactory
+
 import scala.collection.JavaConversions._
 
 object StampServer extends App {
@@ -26,6 +27,7 @@ object StampServer extends App {
       RedisServer(redisDB, redisDBPort)))
 
   private val handler = system.actorOf(Props[StampActor], name = "handler")
+
   IO(Http) ! Http.Bind(handler, host, port)
 
   def getResources = resources

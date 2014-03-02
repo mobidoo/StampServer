@@ -1,6 +1,7 @@
 package com.mobidoo.stampserver
 
 import akka.actor._
+import akka.event.Logging
 
 import spray.util._
 import spray.json._
@@ -13,21 +14,14 @@ import scala.concurrent.duration._
 
 import reactivemongo.core.errors.DatabaseException
 
-import org.joda.time.DateTime
-
-object StampServerResponseJson extends DefaultJsonProtocol {
-  implicit val RetCodeJson      = jsonFormat2(ResponseCode)
-  implicit val StampNumListJson = jsonFormat3(StampNumList)
-  implicit val StampUserJson    = jsonFormat5(StampUser)
-  implicit val StampStoreJson   = jsonFormat5(StampStore)
-}
-
 /**
  * Stamp Actor
  */
-class StampActor extends Actor with SprayActorLogging{
+class StampActor extends Actor {
   import StampServerResponseJson._
   import spray.httpx.SprayJsonSupport._
+
+  val log = Logging(context.system, this)
 
   private val stampDB    = StampServer.getResources.getStampDB
   private val stampCache = StampServer.getResources.getStampCache
@@ -40,6 +34,8 @@ class StampActor extends Actor with SprayActorLogging{
       sender ! Http.Register(self)
 
     case r@HttpRequest(GET, Uri.Path("/StampServer/join_user"), _, _, _) =>
+      log.info(r.toString)
+
       genStampUserFromQuery(r).map { userInfo =>
         try {
           val ret = Await.result(stampDB.insertUser(userInfo), 1 seconds)
@@ -175,25 +171,6 @@ class StampActor extends Actor with SprayActorLogging{
     }
   }
 }
-
-
-/**
- * @param birthDay
- * @param gender
- */
-sealed trait StampObject
-case class StampUser(id:String, name:String, birthDay:String, gender:Int, password:String) extends StampObject
-case class StampStore(id:String, name:String, addr:String, password:String, rewardStampCnt:Int=12) extends StampObject
-case class StampLog(userId:String, storeId:String, action:String, stampNumber:Int=0, status:String="OK", gender:Int=0,
-                    birthday:String="", rewardStampCnt:Int=0, dateTime:DateTime=DateTime.now()) extends StampObject
-/**
- * Return code message for json format
- * @param retCode
- * @param retMsg
- */
-sealed trait StampServerResponse
-sealed case class ResponseCode(retCode:Int, retMsg:String) extends StampServerResponse
-sealed case class StampNumList(retCode:Int, retMsg:String, stampNumList:List[Int]) extends StampServerResponse
 
 /*
 /**
