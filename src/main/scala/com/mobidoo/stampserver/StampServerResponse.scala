@@ -1,9 +1,7 @@
 package com.mobidoo.stampserver
 
 /**
- * Return code message for json format
- * @param retCode
- * @param retMsg
+ * Response for Stamp Server
  */
 sealed trait StampServerResponse
 sealed case class ResponseCode(retCode:Int, retMsg:String) extends StampServerResponse

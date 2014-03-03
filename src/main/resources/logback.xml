@@ -10,13 +10,37 @@
 
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
         <file>log/stampserver.log</file>
-        <append>false</append>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+      		<!-- daily rollover -->
+      		<fileNamePattern>stampserver.%d{yyyy-MM-dd}.log</fileNamePattern>
+
+      		<!-- keep 30 days' worth of history -->
+      		<maxHistory>30</maxHistory>
+   		</rollingPolicy>
         <encoder>
             <pattern>%date{yyyy-MM-dd} %X{akkaTimestamp} %-5level[%thread] %logger{1} - %msg%n</pattern>
         </encoder>
     </appender>
 
+   <appender name="ERROR_FILE" class="ch.qos.logback.core.FileAppender">
+        <file>log/stampserver.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+      		<!-- daily rollover -->
+      		<fileNamePattern>error.%d{yyyy-MM-dd}.log</fileNamePattern>
+
+      		<!-- keep 30 days' worth of history -->
+      		<maxHistory>30</maxHistory>
+   		</rollingPolicy>
+        <encoder>
+            <pattern>%msg%n</pattern>
+        </encoder>
+    </appender>
+    
+    
     <logger name="akka" level="INFO" />
+    <logger name="stamp_err" level="ERROR">
+    	<appender-ref ref="ERROR_FILE"/>
+    </logger>
 
     <root level="DEBUG">
         <appender-ref ref="CONSOLE"/>

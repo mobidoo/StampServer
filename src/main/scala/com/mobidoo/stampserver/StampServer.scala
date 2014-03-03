@@ -7,6 +7,9 @@ import com.typesafe.config.ConfigFactory
 
 import scala.collection.JavaConversions._
 
+/**
+ * Stamp Server Object
+ */
 object StampServer extends App {
   implicit val system = ActorSystem()
 

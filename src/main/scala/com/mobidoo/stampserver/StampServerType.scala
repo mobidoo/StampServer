@@ -3,7 +3,7 @@ package com.mobidoo.stampserver
 import org.joda.time.DateTime
 import spray.json.DefaultJsonProtocol
 
-/**
+/** Types used in Stamp Server
  * @param birthDay
  * @param gender
  */
@@ -14,7 +14,7 @@ case class StampLog(userId:String, storeId:String, action:String, stampNumber:In
                     birthday:String="", rewardStampCnt:Int=0, dateTime:DateTime=DateTime.now()) extends StampServerType
 
 /**
- * for Json format
+ * Object for Json format
  */
 object StampServerResponseJson extends DefaultJsonProtocol {
   implicit val RetCodeJson      = jsonFormat2(ResponseCode)

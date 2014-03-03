@@ -21,7 +21,7 @@ class StampActor extends Actor {
   import StampServerResponseJson._
   import spray.httpx.SprayJsonSupport._
 
-  val log = Logging(context.system, this)
+  val accessLog = Logging(context.system, this)
 
   private val stampDB    = StampServer.getResources.getStampDB
   private val stampCache = StampServer.getResources.getStampCache
@@ -34,7 +34,7 @@ class StampActor extends Actor {
       sender ! Http.Register(self)
 
     case r@HttpRequest(GET, Uri.Path("/StampServer/join_user"), _, _, _) =>
-      log.info(r.toString)
+      accessLog.info(r.toString)
 
       genStampUserFromQuery(r).map { userInfo =>
         try {
@@ -53,6 +53,7 @@ class StampActor extends Actor {
       }
 
     case r@HttpRequest(GET, Uri.Path("/StampServer/join_store"), _, _, _) =>
+      accessLog.info(r.toString)
       genStampStoreFromQuery(r).map { storeInfo =>
         try {
           val ret = Await.result(stampDB.insertStore(storeInfo), 1 seconds)
@@ -70,6 +71,7 @@ class StampActor extends Actor {
       }
 
     case r@HttpRequest(GET, Uri.Path("/StampServer/stamp"), _, _, _) =>
+      accessLog.info(r.toString)
       genStampLogFromQuery(r).flatMap { stampLog =>
         stampCache.getUserInfo(stampLog.userId).await.flatMap { userInfo =>
           stampCache.getStoreInfo(stampLog.storeId).await.map { storeInfo =>
@@ -87,6 +89,7 @@ class StampActor extends Actor {
       }
 
     case r@HttpRequest(GET, Uri.Path("/StampServer/reward"), _, _, _) =>
+      accessLog.info(r.toString)
       genStampLogFromQuery(r, "reward").flatMap { stampLog =>
         stampCache.getUserInfo(stampLog.userId).await.flatMap { userInfo =>
           stampCache.getStoreInfo(stampLog.storeId).await.map { storeInfo =>
@@ -109,6 +112,7 @@ class StampActor extends Actor {
       }
 
     case r@HttpRequest(GET, Uri.Path("/StampServer/stamp_view"), _, _, _) =>
+      accessLog.info(r.toString)
       genStampLogFromQuery(r, "view").flatMap { stampLog =>
         stampCache.getUserInfo(stampLog.userId).await.flatMap { userInfo =>
           stampCache.getStoreInfo(stampLog.storeId).await.map { storeInfo =>
