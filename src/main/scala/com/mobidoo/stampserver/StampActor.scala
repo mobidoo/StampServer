@@ -11,8 +11,23 @@ import HttpMethods._
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.concurrent.Future
 
 import reactivemongo.core.errors.DatabaseException
+
+/**
+ * Stamp log writing Actor
+ */
+class StampLogWriter extends Actor {
+  private val stampDB = StampServer.getResources.getStampDB
+  
+  def receive = {
+    case log@StampLog(uid, sid, act, sn, status, gender, birthday, rewardStampCnt,dateTime) =>
+      stampDB.writeStampLog(log)
+    case _ =>
+      Unit
+  }
+}
 
 /**
  * Stamp Actor
@@ -20,7 +35,9 @@ import reactivemongo.core.errors.DatabaseException
 class StampActor extends Actor {
   import StampServerResponseJson._
   import spray.httpx.SprayJsonSupport._
-
+  import context.dispatcher
+  
+  println("Debug:" + context.system.toString)
   val accessLog = Logging(context.system, this)
 
   private val stampDB    = StampServer.getResources.getStampDB
@@ -29,13 +46,18 @@ class StampActor extends Actor {
 
   def actorRefFactory = context
 
+  override def preRestart(reason: Throwable, message: Option[Any]) {
+  }
+  
+  override def postRestart(reason: Throwable){
+  }
+  
   def receive = {
     case _ : Http.Connected =>
       sender ! Http.Register(self)
 
     case r@HttpRequest(GET, Uri.Path("/StampServer/join_user"), _, _, _) =>
       accessLog.info(r.toString)
-
       genStampUserFromQuery(r).map { userInfo =>
         try {
           val ret = Await.result(stampDB.insertUser(userInfo), 1 seconds)
@@ -76,10 +98,20 @@ class StampActor extends Actor {
         stampCache.getUserInfo(stampLog.userId).await.flatMap { userInfo =>
           stampCache.getStoreInfo(stampLog.storeId).await.map { storeInfo =>
             // put stamp log
-            stampRedis.putStamp(userInfo.id, storeInfo.id, stampLog.stampNumber)
+            val fResponse : Future[ResponseCode] = 
+              stampRedis.getStamp(userInfo.id, storeInfo.id, stampLog.stampNumber).map { isExist =>
+              	if(isExist) ResponseCode(1, "already stamp")
+                else {
+                  stampRedis.putStamp(userInfo.id, storeInfo.id, stampLog.stampNumber)
+                  stampDB.writeStampLog(stampLog) // move to the writer actor
+                  ResponseCode(0, "OK")
+                }
+              }          
+            //stampRedis.putStamp(userInfo.id, storeInfo.id, stampLog.stampNumber)
             // TODO error logging
-            stampDB.writeStampLog(stampLog)
-            ResponseCode(0, "OK")
+            
+            Await.result(fResponse, 1 seconds)
+            //ResponseCode(0, "OK")
           }
         }
       }.map { res =>
@@ -133,7 +165,7 @@ class StampActor extends Actor {
   }
 
   /**
-   *
+   * 
    * @param request
    * @return
    */
