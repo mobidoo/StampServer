@@ -29,7 +29,8 @@ object StampServer extends App {
     new StampServerResources(StampServerConfig(host,port, MongoDBServer(mongoDBHosts, mongoDBPort),
       RedisServer(redisDB, redisDBPort)))
 
-  private val handler = system.actorOf(Props[StampActor], name = "handler")
+  private val logWriter = system.actorOf(Props(new StampLogWriter))
+  private val handler   = system.actorOf(Props(new StampActor(logWriter)), name = "handler")
 
   IO(Http) ! Http.Bind(handler, host, port)
 

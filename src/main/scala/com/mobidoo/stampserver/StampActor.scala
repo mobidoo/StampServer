@@ -18,23 +18,42 @@ import reactivemongo.core.errors.DatabaseException
 /**
  * Stamp log writing Actor
  */
-class StampLogWriter extends Actor {
+class StampLogWriter extends Actor with SprayActorLogging {
   private val stampDB = StampServer.getResources.getStampDB
+ 
+  /*
+  override def preRestart(reason: Throwable, message : Option[Any]) {
+    // logging
+    super.preRestart(reason, message)
+  }
+  */
   
   def receive = {
-    case log@StampLog(uid, sid, act, sn, status, gender, birthday, rewardStampCnt,dateTime) =>
-      stampDB.writeStampLog(log)
+    case l@StampLog(uid, sid, act, sn, status, gender, birthday, rewardStampCnt,dateTime) =>
+      try {
+        stampDB.writeStampLog(l)
+      } catch {
+        case e : Throwable =>
+          log.error("error] when writing a log on mongodb :" + e.getMessage())
+          //self ! l
+      }
+      // handler exceptions
     case _ =>
       Unit
   }
+  
 }
 
 /**
  * Stamp Actor
  */
-class StampActor extends Actor {
+class StampActor(logWriter:ActorRef) extends Actor {
   import StampServerResponseJson._
   import spray.httpx.SprayJsonSupport._
+  import akka.actor.OneForOneStrategy
+  import akka.actor.SupervisorStrategy._
+  import scala.concurrent.duration._
+  
   import context.dispatcher
   
   println("Debug:" + context.system.toString)
@@ -44,14 +63,14 @@ class StampActor extends Actor {
   private val stampCache = StampServer.getResources.getStampCache
   private val stampRedis = StampServer.getResources.getStampRedis
 
+  /*
+  override val supervisorStrategy = 
+    OneForOneStrategy(maxNrOfRetries = 2, withinTimeRange = 30 seconds){
+    case _ : Throwable => Restart
+    }*/
+  
   def actorRefFactory = context
 
-  override def preRestart(reason: Throwable, message: Option[Any]) {
-  }
-  
-  override def postRestart(reason: Throwable){
-  }
-  
   def receive = {
     case _ : Http.Connected =>
       sender ! Http.Register(self)
@@ -103,7 +122,8 @@ class StampActor extends Actor {
               	if(isExist) ResponseCode(1, "already stamp")
                 else {
                   stampRedis.putStamp(userInfo.id, storeInfo.id, stampLog.stampNumber)
-                  stampDB.writeStampLog(stampLog) // move to the writer actor
+                  //stampDB.writeStampLog(stampLog) // move to the writer actor
+                  logWriter ! stampLog
                   ResponseCode(0, "OK")
                 }
               }          
@@ -129,7 +149,8 @@ class StampActor extends Actor {
             val stampList = Await.result(stampRedis.getStampList(userInfo.id, storeInfo.id), 1 seconds)
             if (stampList.length == storeInfo.rewardStampCnt){
               stampRedis.removeStampList(userInfo.id, storeInfo.id)
-              stampDB.writeStampLog(stampLog)
+              //stampDB.writeStampLog(stampLog)
+              logWriter ! stampLog
               ResponseCode(0, "OK")
             } else {
               stampDB.writeStampLog(stampLog)
@@ -148,7 +169,7 @@ class StampActor extends Actor {
       genStampLogFromQuery(r, "view").flatMap { stampLog =>
         stampCache.getUserInfo(stampLog.userId).await.flatMap { userInfo =>
           stampCache.getStoreInfo(stampLog.storeId).await.map { storeInfo =>
-          // put stamp log
+            // put stamp log
             val stampList : List[Int] = Await.result(stampRedis.getStampList(userInfo.id, storeInfo.id), 1 seconds)
             StampNumList(0, "ok", stampList)
             // TODO error logging
