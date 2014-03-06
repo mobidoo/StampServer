@@ -117,8 +117,6 @@ class StampDB(mongoDBConn : MongoConnection ) {
       "storeId"   -> log.storeId,
       "action"    -> log.action,
       "stamp_num" -> log.stampNumber,
-      "birthday"  -> log.birthday,
-      "gender"    -> log.gender,
       "status"    -> log.status,
       "datetime"  -> log.dateTime)
   }

@@ -29,7 +29,7 @@ class StampLogWriter extends Actor with SprayActorLogging {
   */
   
   def receive = {
-    case l@StampLog(uid, sid, act, sn, status, gender, birthday, rewardStampCnt,dateTime) =>
+    case l@StampLog(uid, sid, act, sn, status,dateTime) =>
       try {
         stampDB.writeStampLog(l)
       } catch {
