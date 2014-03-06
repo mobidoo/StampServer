@@ -2,6 +2,8 @@ package com.mobidoo.stampserver
 
 import akka.actor._
 import akka.event.Logging
+import akka.routing.RoutedActorRef
+import akka.routing.Router
 
 import spray.util._
 import spray.json._
@@ -21,12 +23,11 @@ import reactivemongo.core.errors.DatabaseException
 class StampLogWriter extends Actor with SprayActorLogging {
   private val stampDB = StampServer.getResources.getStampDB
  
-  /*
   override def preRestart(reason: Throwable, message : Option[Any]) {
     // logging
-    super.preRestart(reason, message)
+    log.error("preRestart! : "+ reason.getMessage())
+    message map (self ! _ )
   }
-  */
   
   def receive = {
     case l@StampLog(uid, sid, act, sn, status,dateTime) =>
@@ -47,7 +48,7 @@ class StampLogWriter extends Actor with SprayActorLogging {
 /**
  * Stamp Actor
  */
-class StampActor(logWriter:ActorRef) extends Actor {
+class StampActor(logWriterRouter:ActorRef) extends Actor {
   import StampServerResponseJson._
   import spray.httpx.SprayJsonSupport._
   import akka.actor.OneForOneStrategy
@@ -123,7 +124,7 @@ class StampActor(logWriter:ActorRef) extends Actor {
                 else {
                   stampRedis.putStamp(userInfo.id, storeInfo.id, stampLog.stampNumber)
                   //stampDB.writeStampLog(stampLog) // move to the writer actor
-                  logWriter ! stampLog
+                  logWriterRouter ! stampLog
                   ResponseCode(0, "OK")
                 }
               }          
@@ -150,7 +151,7 @@ class StampActor(logWriter:ActorRef) extends Actor {
             if (stampList.length == storeInfo.rewardStampCnt){
               stampRedis.removeStampList(userInfo.id, storeInfo.id)
               //stampDB.writeStampLog(stampLog)
-              logWriter ! stampLog
+              logWriterRouter ! stampLog
               ResponseCode(0, "OK")
             } else {
               stampDB.writeStampLog(stampLog)
@@ -304,6 +305,7 @@ trait StampHttpService extends HttpService {
 
 }
 */
+
 
 
 

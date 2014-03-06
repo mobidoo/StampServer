@@ -1,6 +1,8 @@
 package com.mobidoo.stampserver
 
 import akka.io.IO
+import akka.actor.OneForOneStrategy
+import akka.actor.SupervisorStrategy._
 import akka.routing._
 import spray.can.Http
 import akka.actor.{ActorSystem, Props}
@@ -31,7 +33,14 @@ object StampServer extends App {
     new StampServerResources(StampServerConfig(host,port, MongoDBServer(mongoDBHosts, mongoDBPort),
       RedisServer(redisDB, redisDBPort)))
 
-  private val logWriter = system.actorOf(Props(new StampLogWriter).withRouter(RoundRobinRouter(logActorCnt)), "LogWriterRouter")
+  // supervisor for log writer router
+  val escalator = OneForOneStrategy() {
+    case e : Throwable => 
+      Restart
+  }
+  
+  private val logWriter = system.actorOf(Props(new StampLogWriter)
+      .withRouter(RoundRobinRouter(logActorCnt, supervisorStrategy = escalator)), "LogWriterRouter")
   private val handler   = system.actorOf(Props(new StampActor(logWriter)), name = "handler")
 
   IO(Http) ! Http.Bind(handler, host, port)
