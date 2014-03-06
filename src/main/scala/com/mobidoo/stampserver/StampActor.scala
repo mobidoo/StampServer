@@ -31,16 +31,7 @@ class StampLogWriter extends Actor with SprayActorLogging {
   
   def receive = {
     case l@StampLog(uid, sid, act, sn, status,dateTime) =>
-      try {
-        stampDB.writeStampLog(l)
-      } catch {
-        case e : Throwable =>
-          log.error("error] when writing a log on mongodb :" + e.getMessage())
-          //self ! l
-      }
-      // handler exceptions
-    case _ =>
-      Unit
+      stampDB.writeStampLog(l)
   }
   
 }
