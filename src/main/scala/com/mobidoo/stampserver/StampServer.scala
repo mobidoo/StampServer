@@ -1,6 +1,7 @@
 package com.mobidoo.stampserver
 
 import akka.io.IO
+import akka.routing._
 import spray.can.Http
 import akka.actor.{ActorSystem, Props}
 import com.typesafe.config.ConfigFactory
@@ -17,6 +18,7 @@ object StampServer extends App {
   private val config = ConfigFactory.load()
   private val host = config.getString("stamp_server.host")
   private val port = config.getInt("stamp_server.port")
+  private val logActorCnt = config.getInt("stamp_server.log_actor_cnt")
 
   private val mongoDBHosts = config.getStringList("stamp_server.mongodb.hosts").toList
   private val mongoDBPort  = config.getInt("stamp_server.mongodb.port")
@@ -29,7 +31,7 @@ object StampServer extends App {
     new StampServerResources(StampServerConfig(host,port, MongoDBServer(mongoDBHosts, mongoDBPort),
       RedisServer(redisDB, redisDBPort)))
 
-  private val logWriter = system.actorOf(Props(new StampLogWriter))
+  private val logWriter = system.actorOf(Props(new StampLogWriter).withRouter(RoundRobinRouter(logActorCnt)), "LogWriterRouter")
   private val handler   = system.actorOf(Props(new StampActor(logWriter)), name = "handler")
 
   IO(Http) ! Http.Bind(handler, host, port)
