@@ -9,11 +9,12 @@ import spray.util._
 import spray.json._
 import spray.can._
 import spray.http._
+import spray.routing._
 import HttpMethods._
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
-import scala.concurrent.Future
+import scala.concurrent.{future, Future}
 
 import reactivemongo.core.errors.DatabaseException
 
@@ -39,7 +40,7 @@ class StampLogWriter extends Actor with SprayActorLogging {
 /**
  * Stamp Actor
  */
-class StampActor(logWriterRouter:ActorRef) extends Actor {
+class StampActor extends Actor with StampHttpService {
   import StampServerResponseJson._
   import spray.httpx.SprayJsonSupport._
   import akka.actor.OneForOneStrategy
@@ -51,10 +52,6 @@ class StampActor(logWriterRouter:ActorRef) extends Actor {
   println("Debug:" + context.system.toString)
   val accessLog = Logging(context.system, this)
 
-  private val stampDB    = StampServer.getResources.getStampDB
-  private val stampCache = StampServer.getResources.getStampCache
-  private val stampRedis = StampServer.getResources.getStampRedis
-
   /*
   override val supervisorStrategy = 
     OneForOneStrategy(maxNrOfRetries = 2, withinTimeRange = 30 seconds){
@@ -63,7 +60,9 @@ class StampActor(logWriterRouter:ActorRef) extends Actor {
   
   def actorRefFactory = context
 
-  def receive = {
+  def receive = runRoute(stampRoute)
+  /*
+  {
     case _ : Http.Connected =>
       sender ! Http.Register(self)
 
@@ -218,84 +217,121 @@ class StampActor(logWriterRouter:ActorRef) extends Actor {
         }
       }
     }
-  }
+  } */
 }
 
-/*
+
 /**
  *
  * Stamp Service
  */
 trait StampHttpService extends HttpService {
-  import StampServerJsonResponse._
+  import StampServerResponseJson._
   import spray.httpx.SprayJsonSupport._
 
   private val prefix = "StampServer"
 
   implicit def executionContext = actorRefFactory.dispatcher
-  implicit val timeout = Timeout(5 seconds)
+  //implicit val timeout = Timeout(5 seconds)
 
   private val stampDB    = StampServer.getResources.getStampDB
   private val stampRedis = StampServer.getResources.getStampRedis
   private val stampCache = StampServer.getResources.getStampCache
-
+  private val logWriter  = StampServer.getLogWriter
+  
   val stampRoute = pathPrefix(prefix) {
     path("join_user") {
-      parameters ('id.?, 'name ? "", 'birtyday ? "", 'gender.as[Int] ? 0, 'pass.? ) {
+      parameters ('id, 'name ? "", 'birtyday ? "", 'gender.as[Int] ? 0, 'pass.? ) {
         (id, name, birthday, gender, passwd) =>
-          if (id.isDefined && passwd.isDefined) {
-            val user = StampUser(id.get, name, birthday, gender, passwd.get)
-            complete(stampDB.insertUser(user))
-          } else {
-            complete(ReturnCode(-5, "query error"))
-          }
+          val user = StampUser(id, name, birthday, gender, passwd.get)
+          try {
+            stampDB.insertUser(user)
+            complete(ResponseCode(0, "OK"))
+          } catch {
+            case e : Throwable =>
+              complete(ResponseCode(-1, e.getMessage()))
+          } 
       }
     } ~
     path("join_store"){
-     parameters('id.?, 'name.? , 'addr ? "", 'password.?) { (id, name, addr, passwd) =>
-       if(id.isDefined && name.isDefined && passwd.isDefined){
-         complete(stampDB.insertStore(StampStore(id.get, name.get, addr, passwd.get)))
-       } else {
-         complete(ReturnCode(-5, "query error"))
-       }
-     }
-    } ~
-    path("view_user"){
-      parameter('id.?, 'check_cd.?) { (userId, checkCd) =>
-        val userInfo = userId.flatMap { id => Await.result(stampDB.getUser(id), 1 seconds) }
-        if (userInfo.isDefined) complete(userInfo.get)
-        else complete(ReturnCode(-3, "no such user"))
-      }
-    } ~
-    path("stamp"){
-      parameter('uid.?, 'sid.?, 'snum.as[Int].?, 'check_cd.?){
-        (userId, storeId, stampNum, checkCd) => {
-          if(userId.isDefined && storeId.isDefined && stampNum.isDefined && checkCd.isDefined){
-            userId.map(stampCache.getUserinfo(_))
-
-
-            stampCache.getUserInfo(sid)
-            stampCache.getStoreInfo(uid)
-
-            stampRedis.putStamp(uid,sid, stampNum.get)
-
-
-          } else {
-            complete(ReturnCode(-3, "query err"))
-          }
+      parameters('id, 'name , 'addr ? "", 'password) { (id, name, addr, passwd) =>
+        val store = StampStore(id, name, addr, passwd)
+        try {
+          stampDB.insertStore(store)
+          complete(ResponseCode(0, "OK"))
+        } catch {
+          case e : Throwable =>
+            complete(ResponseCode(-1, e.getMessage()))
         }
       }
     } ~
+    path("view_user"){
+      parameters('id, 'check_cd ? "") { (userId, checkCd) =>
+        complete(stampDB.getUser(userId))
+      }
+    } ~
+    path("stamp"){
+      parameters('uid, 'sid, 'snum.as[Int], 'check_cd ? ""){ (userId, storeId, stampNum, checkCd) => 
+        val fRes = stampCache.getUserInfo(userId).flatMap {
+          case Some(uId) =>
+            stampCache.getStoreInfo(storeId).flatMap {
+              case Some(sId) =>
+                stampRedis.getStamp(userId, storeId, stampNum).map { res =>
+                  if (res) 
+                    ResponseCode(1, "already stamp")
+                  else {
+                    stampRedis.putStamp(userId, storeId, stampNum)
+                    //TODO :logWriterRouter !
+                    logWriter ! StampLog(userId, storeId, "stamp", stampNum)
+                    ResponseCode(0, "OK")
+                  }
+                }
+              case None =>
+                future{ ResponseCode(-1, "No such store") }
+            }
+          case None =>
+            future {ResponseCode(-1, "No such User")}
+        }
+        complete(fRes)
+      }
+    } ~
     path("reward"){
-      complete("")
+      parameters('uid, 'sid, 'action, 'check_cd ? ""){ (userId, storeId, action, checkCd) => 
+        if (action == "reward") {
+          val fRes = stampCache.getUserInfo(userId).flatMap {
+            case Some(uId) =>
+              stampCache.getStoreInfo(storeId).flatMap {
+                case Some(sId) =>
+                  stampRedis.getStampList(userId, storeId).map { stampList =>
+                    if (stampList.length == sId.rewardStampCnt){
+                      stampRedis.removeStampList(userId, storeId)
+                      logWriter ! StampLog(userId, storeId, "reward")
+                      ResponseCode(0, "OK")
+                    } else {
+                      
+                      ResponseCode(-1, "no enough stamp cnt")
+                    }
+                  }
+                case None =>
+                  future{ ResponseCode(-1, "No such store") }
+              }
+            case None =>
+              future {ResponseCode(-1, "No such User")}
+          }
+          
+          complete(fRes)
+        } else complete(ResponseCode(-1, "no"))
+      }
     } ~
     path("view_stamp"){
-      complete("")
+      parameters('uid, 'sid, 'action, 'check_cd ? "") { (userId, storeId, action, checkCd) =>
+        complete(stampRedis.getStampList(userId, storeId))
+      }
     }
   }
 
 }
-*/
+
 
 
 

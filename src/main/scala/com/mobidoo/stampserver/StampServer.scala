@@ -41,11 +41,12 @@ object StampServer extends App {
   
   private val logWriter = system.actorOf(Props(new StampLogWriter)
       .withRouter(RoundRobinRouter(logActorCnt, supervisorStrategy = escalator)), "LogWriterRouter")
-  private val handler   = system.actorOf(Props(new StampActor(logWriter)), name = "handler")
+  private val handler   = system.actorOf(Props(new StampActor), name = "handler")
 
   IO(Http) ! Http.Bind(handler, host, port)
 
   def getResources = resources
+  def getLogWriter = logWriter
 }
 
 
